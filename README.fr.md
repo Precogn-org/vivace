@@ -1,5 +1,7 @@
 # claude-rc-keepalive
 
+> **Nom du produit : Vivace.** Ce dépôt (`claude-rc-keepalive`) est le moteur de **Vivace** — il garde les agents Claude Code allumés et pilotables « en remote live ».
+
 🇬🇧 [English](README.md) · 🇫🇷 Français
 
 Maintient en vie des **sessions Claude Code Remote Control** sur une machine Linux toujours allumée (VPS, mini-PC) :
