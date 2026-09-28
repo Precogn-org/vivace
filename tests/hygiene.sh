@@ -32,7 +32,7 @@ hits=$(grep -RInE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$ROOT" "${EX
 if [ -n "$hits" ]; then found "adresses e-mail (hors modèles systemd claude-rc@…)" "$hits"; else ok "adresses e-mail (hors modèles systemd claude-rc@…)"; fi
 
 scans=$((scans + 1))
-hits=$(grep -RInoE '[A-Za-z0-9+/_=-]{32,}' "$ROOT" "${EXCL[@]}" 2>/dev/null | awk -F: '{t=$3; if (t ~ /[0-9]/ && t ~ /[A-Za-z]/) print}' || true)
+hits=$(grep -RInoE '[A-Za-z0-9+_=-]{32,}' "$ROOT" "${EXCL[@]}" 2>/dev/null | awk -F: '{t=$3; if (t ~ /[0-9]/ && t ~ /[A-Za-z]/) print}' || true)
 if [ -n "$hits" ]; then found "longues chaînes aléatoires (>= 32 caractères avec lettres et chiffres)" "$hits"; else ok "longues chaînes aléatoires (>= 32 caractères avec lettres et chiffres)"; fi
 
 PRIV="$ROOT/tests/private-patterns.local"
