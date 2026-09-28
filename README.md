@@ -1,5 +1,7 @@
 # claude-rc-keepalive
 
+> **Product name: Vivace.** This repository (`claude-rc-keepalive`) is the engine behind **Vivace** — it keeps Claude Code agents always-on and pilotable in remote live.
+
 🇬🇧 English · 🇫🇷 [Français](README.fr.md)
 
 Keeps **Claude Code Remote Control sessions** alive on an always-on Linux machine (VPS, mini-PC): each one is restarted
