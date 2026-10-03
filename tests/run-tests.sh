@@ -14,7 +14,7 @@ LINUX=0; [ "$(uname -s)" = Linux ] && LINUX=1
 
 export HOME="$T/home"
 export CLAUDE_RC_CONFIG_DIR="$T/config" CLAUDE_RC_STATE_DIR="$T/state" STUB_LOG="$T/calls.log" SCREEN="$T/screen.txt"
-export CLAUDE_RC_PROC_ROOT="$T/proc" CLAUDE_RC_MEMINFO="$T/meminfo" CLAUDE_RC_ALLOW_TMP=1 RC_AUTH_CACHE_SECONDS=0   # (dossiers de test sous /tmp)
+export CLAUDE_RC_PROC_ROOT="$T/proc" CLAUDE_RC_MEMINFO="$T/meminfo" CLAUDE_RC_ALLOW_TMP=1 RC_AUTH_CACHE_SECONDS=0 CLAUDE_CONFIG_DIR="$T/cc"   # (dossiers de test sous /tmp)
 export PATH="$STUBS:$PATH"
 printf 'MemTotal: 8000000 kB\nMemAvailable: 6000000 kB\n' > "$T/meminfo"
 printf 'MemTotal: 8000000 kB\nMemAvailable: 500000 kB\n' > "$T/meminfo.low"
@@ -79,7 +79,7 @@ skipped() { echo "  ignorÃ© $1"; skip=$((skip + 1)); }
 reset() { rm -rf "$CLAUDE_RC_STATE_DIR" "$T/work" "$T/proc"; : > "$STUB_LOG"; rm -f "$SCREEN"
           for x in t2 t3 t4 t5 t6 exemple; do rm -f "$CLAUDE_RC_CONFIG_DIR/$x.env"; done
           export CLAUDE_RC_MEMINFO="$T/meminfo" CLAUDE_RC_ALLOW_TMP=1
-          unset STUB_AUTH STUB_NET STUB_ALIVE STUB_PID STUB_CONTINUE_RC STUB_CONTINUE_SLEEP STUB_FRESH_RC STUB_TMUX_HAS STUB_TMUX_SLEEP STUB_TMUX_BG CLAUDE_RC_NOW CLAUDE_RC_SCREEN_FILE RC_FORCE_FRESH RC_STOP_WAIT RC_FALLBACK RC_MIN_AVAILABLE_MB RC_LOG_MAX_BYTES RC_ALLOW_SAME_NAME RC_AUTH_FRESH; }
+          unset STUB_AUTH STUB_NET STUB_ALIVE STUB_PID STUB_CONTINUE_RC STUB_CONTINUE_SLEEP STUB_FRESH_RC STUB_TMUX_HAS STUB_TMUX_SLEEP STUB_TMUX_BG CLAUDE_RC_NOW CLAUDE_RC_SCREEN_FILE RC_FORCE_FRESH RC_STOP_WAIT RC_FALLBACK RC_MIN_AVAILABLE_MB RC_LOG_MAX_BYTES RC_ALLOW_SAME_NAME RC_AUTH_FRESH RC_AUTH_MODE; rm -rf "$T/cc"; }
 # alive [dossier] : un faux serveur (pid 4242) travaille dans ce dossier (dÃ©faut : celui de t1)
 alive() { export STUB_ALIVE=1; rm -rf "$T/proc"; mkdir -p "$T/proc/4242"; ln -sfn "${1:-$T/work}" "$T/proc/4242/cwd"; }
 n() { grep -c -- "$1" "$STUB_LOG" || true; }               # nombre d'appels contenant le motif
@@ -457,6 +457,25 @@ mkdir -p "$CLAUDE_RC_STATE_DIR"; echo 5000 > "$CLAUDE_RC_STATE_DIR/auth-ok"
 bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
 check "cache : horodatage dans le futur ignoré"                   test "$(authcalls)" = 1
 export RC_AUTH_CACHE_SECONDS=0; unset CLAUDE_RC_NOW STUB_AUTH
+reset
+
+echo "== contrôle de connexion : lecture du fichier, sans lancer claude"
+setcred() { mkdir -p "$T/cc"; printf '%s
+' "$1" > "$T/cc/.credentials.json"; }
+reset; setcred '{"claudeAiOauth":{"accessToken":"x","refreshToken":"y","expiresAt":1}}'
+check "fichier avec jeton de renouvellement : OK"                 exit_is 0 bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
+check "fichier avec jeton : claude n'est PAS lancé"               test "$(authcalls)" = 0
+export STUB_AUTH=ko
+check "fichier avec jeton : OK même si le CLI dirait non"         exit_is 0 bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
+check "RC_AUTH_FRESH=1 interroge le CLI"                          exit_is 1 env RC_AUTH_FRESH=1 bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
+check "RC_AUTH_MODE=cli interroge le CLI"                         exit_is 1 env RC_AUTH_MODE=cli bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
+reset; setcred '{"claudeAiOauth":{"accessToken":"x"}}'
+check "fichier sans jeton de renouvellement : le CLI décide"      exit_is 0 bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
+check "fichier sans jeton : claude a bien été interrogé"          test "$(authcalls)" = 1
+reset; setcred '{"claudeAiOauth":{"refreshToken":""}}'; export STUB_AUTH=ko
+check "jeton vide : connexion invalide"                           exit_is 1 bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
+reset; export STUB_AUTH=ko
+check "fichier absent : le CLI décide (invalide)"                 exit_is 1 bash -c ". '$ROOT/lib/common.sh'; rc_auth_ok"
 reset
 
 for f in bin/claude-rc-ensure bin/claude-rc-run bin/claude-rc-ctl lib/common.sh install.sh uninstall.sh tests/run-tests.sh tests/hygiene.sh; do

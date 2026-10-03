@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The routine login check no longer starts `claude`.** `claude auth status` can trigger an OAuth token refresh; with
+  one check per instance per minute these short-lived refreshes raced with those of the running sessions, and the
+  refresh token was lost (twice in one night on a 13-instance host). `RC_AUTH_MODE=file` (default) now reads the
+  credentials file (never printed) and asks the CLI only when no refresh token is found; `RC_AUTH_MODE=cli` restores the
+  old behaviour.
 - **Fewer login checks.** A successful `claude auth status` is remembered for `RC_AUTH_CACHE_SECONDS` (default 300,
   `0` disables) in one file shared by all instances, so N instances no longer make N calls per minute. A failure is
   never remembered. Side effect: a login that drops is noticed after at most that delay instead of one minute.

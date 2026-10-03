@@ -247,6 +247,11 @@ rc_auth_ok() {
   local f="$CLAUDE_RC_STATE_DIR/auth-ok" ttl=${RC_AUTH_CACHE_SECONDS:-300} now ts=""
   case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
   now=$(rc_now)
+  # Mode « file » (défaut) : on LIT le fichier d'identifiants sans lancer claude. Lancer « claude auth status » peut
+  # déclencher un renouvellement du jeton, en concurrence avec celui des sessions : c'est ce qui a fait perdre la connexion.
+  if [ "${RC_AUTH_MODE:-file}" = file ] && [ "${RC_AUTH_FRESH:-0}" != 1 ]      && grep -Eqs '"refreshToken"[[:space:]]*:[[:space:]]*"[^"]+"' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json"; then
+    return 0
+  fi
   if [ "$ttl" -gt 0 ] && [ "${RC_AUTH_FRESH:-0}" != 1 ] && [ -r "$f" ]; then
     read -r ts < "$f" 2>/dev/null || ts=""
     case "$ts" in ''|*[!0-9]*) ts="" ;; esac
