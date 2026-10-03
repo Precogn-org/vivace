@@ -79,7 +79,7 @@ skipped() { echo "  ignoré $1"; skip=$((skip + 1)); }
 reset() { rm -rf "$CLAUDE_RC_STATE_DIR" "$T/work" "$T/proc"; : > "$STUB_LOG"; rm -f "$SCREEN"
           for x in t2 t3 t4 t5 t6 exemple; do rm -f "$CLAUDE_RC_CONFIG_DIR/$x.env"; done
           export CLAUDE_RC_MEMINFO="$T/meminfo" CLAUDE_RC_ALLOW_TMP=1
-          unset STUB_AUTH STUB_NET STUB_ALIVE STUB_PID STUB_CONTINUE_RC STUB_CONTINUE_SLEEP STUB_FRESH_RC STUB_TMUX_HAS STUB_TMUX_SLEEP STUB_TMUX_BG CLAUDE_RC_NOW CLAUDE_RC_SCREEN_FILE RC_FORCE_FRESH RC_STOP_WAIT RC_FALLBACK RC_MIN_AVAILABLE_MB RC_LOG_MAX_BYTES; }
+          unset STUB_AUTH STUB_NET STUB_ALIVE STUB_PID STUB_CONTINUE_RC STUB_CONTINUE_SLEEP STUB_FRESH_RC STUB_TMUX_HAS STUB_TMUX_SLEEP STUB_TMUX_BG CLAUDE_RC_NOW CLAUDE_RC_SCREEN_FILE RC_FORCE_FRESH RC_STOP_WAIT RC_FALLBACK RC_MIN_AVAILABLE_MB RC_LOG_MAX_BYTES RC_ALLOW_SAME_NAME; }
 # alive [dossier] : un faux serveur (pid 4242) travaille dans ce dossier (défaut : celui de t1)
 alive() { export STUB_ALIVE=1; rm -rf "$T/proc"; mkdir -p "$T/proc/4242"; ln -sfn "${1:-$T/work}" "$T/proc/4242/cwd"; }
 n() { grep -c -- "$1" "$STUB_LOG" || true; }               # nombre d'appels contenant le motif
@@ -172,7 +172,7 @@ echo "== détection d'un serveur existant par son DOSSIER de travail"
 reset; alive; printf 'RC_NAME="Tout autre nom"\nRC_DIR="%s/work"\n' "$T" > "$T/autre.env"
 check "serveur dans le même dossier (nom différent) : adopté, pas de doublon" bash -c "bash '$ENSURE' t1; [ \"\$(grep -c 'new-session' '$STUB_LOG' || true)\" = 0 ]"
 reset; alive "$T/ailleurs"
-check "serveur de même nom mais AUTRE dossier : ignoré (lancement)" bash -c "bash '$ENSURE' t1; [ \"\$(grep -c 'new-session' '$STUB_LOG' || true)\" = 1 ]"
+check "serveur d'un AUTRE dossier (nom illisible) : ignoré (lancement)" bash -c "bash '$ENSURE' t1; [ \"\$(grep -c 'new-session' '$STUB_LOG' || true)\" = 1 ]"
 reset; alive "$T/work/sous-dossier"
 check "serveur dans un SOUS-dossier : distinct (lancement)"       bash -c "bash '$ENSURE' t1; [ \"\$(grep -c 'new-session' '$STUB_LOG' || true)\" = 1 ]"
 reset; mkdir -p "$T/reel" "$T/work"; rmdir "$T/work"; ln -sfn "$T/reel" "$T/work"; alive "$T/reel"
@@ -181,6 +181,46 @@ rm -f "$T/work"; rm -rf "$T/reel"
 reset; alive
 check "ctl status : affiche le pid et la mémoire du serveur"      bash -c "'$CTL' status t1 | grep -q 'processus serveur  : en cours (pid 4242)'"
 check "ctl status : affiche le repli (fallback) never par défaut" bash -c "'$CTL' status t1 | grep -q 'repli (fallback)   : never'"
+
+echo "== doublons de noms (toutes méthodes de lancement)"
+# fakeproc <pid> <dossier> <argument...> : un faux processus (ligne de commande séparée par NUL + dossier de travail)
+fakeproc() { local pid=$1 cwd=$2; shift 2; mkdir -p "$T/proc/$pid" "$cwd"; ln -sfn "$cwd" "$T/proc/$pid/cwd"; printf '%s\0' "$@" > "$T/proc/$pid/cmdline"; }
+NOM="Nom avec espaces é"
+
+reset; fakeproc 5001 "$T/a" claude remote-control --name "Alpha" --spawn same-dir
+check "list : un nom unique -> aucun avertissement"                 bash -c "! '$CTL' list | grep -q 'DOUBLONS'"
+
+reset; fakeproc 5001 "$T/a" /usr/bin/claude remote-control --name "$NOM" --spawn same-dir
+fakeproc 5002 "$T/b" /home/x/.local/bin/claude --remote-control "$NOM" --model opus
+check "list : même nom, formes serveur et interactive -> DOUBLONS"  bash -c "'$CTL' list | grep -q 'DOUBLONS'"
+check "list : le nom avec espaces et accent est lu en entier"       bash -c "'$CTL' list | grep -qF '« $NOM »'"
+check "list : les deux pid et les deux formes sont montrés"         bash -c "o=\$('$CTL' list); echo \"\$o\" | grep -q 'pid 5001 .*serveur' && echo \"\$o\" | grep -q 'pid 5002 .*interactive'"
+check "list : code de sortie 0 malgré les doublons"                 exit_is 0 "$CTL" list
+
+reset; fakeproc 5001 "$T/a" claude remote-control --name "Alpha"
+fakeproc 5003 "$T/c" claude --name "Alpha" --model opus
+fakeproc 5004 "$T/d" claude --remote-control --model opus
+fakeproc 5005 "$T/e" bash -c "claude --remote-control Alpha"
+check "list : « claude --name » ordinaire, --remote-control sans nom et autre programme ne comptent pas" bash -c "! '$CTL' list | grep -q 'DOUBLONS'"
+
+reset; fakeproc 5006 "$T/ailleurs" claude --remote-control T1 --model opus
+check "ensure : un AUTRE processus porte le nom -> rien n'est lancé (code 9)" exit_is 9 bash "$ENSURE" t1
+check "ensure : doublon -> tmux non appelé"                         test "$(n 'new-session')" = 0
+check "ensure : doublon -> journalisé avec le pid et le dossier"    logged "porte déjà le nom « T1 » : pid 5006 (interactive, $T/ailleurs)"
+check "ensure : doublon -> le lancement n'est pas compté"           bash -c "! test -s '$CLAUDE_RC_STATE_DIR/t1.launches'"
+
+reset; fakeproc 5007 "$T/ailleurs" claude remote-control --name T1 --spawn same-dir
+check "ensure : un serveur de même nom dans un autre dossier -> refusé (code 9)" exit_is 9 bash "$ENSURE" t1
+
+reset; fakeproc 5006 "$T/ailleurs" claude --remote-control T1; export RC_ALLOW_SAME_NAME=1
+check "RC_ALLOW_SAME_NAME=1 : le garde-fou est levé, lancement"     bash -c "bash '$ENSURE' t1; [ \"\$(grep -c 'new-session' '$STUB_LOG' || true)\" = 1 ]"
+unset RC_ALLOW_SAME_NAME
+
+reset; alive; fakeproc 4242 "$T/work" claude remote-control --name T1 --spawn same-dir
+check "son propre serveur n'est jamais un doublon (ensure, code 0)" exit_is 0 bash "$ENSURE" t1
+check "son propre serveur : ctl status n'affiche pas de doublon"    bash -c "! '$CTL' status t1 | grep -q 'DOUBLON'"
+fakeproc 5006 "$T/ailleurs" claude --remote-control T1
+check "ctl status : montre le jumeau (pid et forme)"                bash -c "o=\$('$CTL' status t1); echo \"\$o\" | grep -q 'DOUBLON' && echo \"\$o\" | grep -q 'pid 5006 (interactive)'"
 
 echo "== garde-fou mémoire"
 reset; export CLAUDE_RC_MEMINFO="$T/meminfo.low"

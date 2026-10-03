@@ -100,6 +100,7 @@ rc_load_config() {
   RC_DIR=${RC_DIR%/}
   RC_PERMISSION_MODE=${RC_PERMISSION_MODE:-acceptEdits}
   RC_FALLBACK=${RC_FALLBACK:-never}
+  RC_ALLOW_SAME_NAME=${RC_ALLOW_SAME_NAME:-0}
   CLAUDE_BIN=${CLAUDE_BIN:-$HOME/.local/bin/claude}
   RC_TMUX_SESSION=${RC_TMUX_SESSION:-rc-$RC_ID}
   RC_CONTINUE_FAIL_SECONDS=${RC_CONTINUE_FAIL_SECONDS:-45}
@@ -160,6 +161,61 @@ rc_server_pids() {
     [ "$cwd" = "$want" ] && echo "$pid"
   done
   return 0
+}
+
+# Sessions Remote Control de l'utilisateur, QUELLE QUE SOIT leur méthode de lancement (lecture de /proc) :
+#   serveur      claude remote-control --name <NOM> ...   (celles de claude-rc-keepalive, ou lancées à la main)
+#   interactive  claude --remote-control <NOM> ...        (par exemple dans une fenêtre tmux, hors claude-rc-keepalive)
+# Une ligne par processus : « pid<TAB>forme<TAB>dossier<TAB>nom ». Les arguments sont lus séparés par NUL : un nom
+# avec espaces ou accents est donc lu correctement. Un `claude --name ...` ordinaire (hors Remote Control) n'est pas compté.
+rc_named_sessions() {
+  local proc=${CLAUDE_RC_PROC_ROOT:-/proc} d pid cwd form name i
+  local -a args
+  for d in "$proc"/[0-9]*; do
+    [ -O "$d" ] && [ -r "$d/cmdline" ] || continue
+    args=()
+    mapfile -d '' -t args < "$d/cmdline" 2>/dev/null || continue
+    [ "${#args[@]}" -ge 2 ] && [ "${args[0]##*/}" = claude ] || continue
+    form=""; name=""
+    if [ "${args[1]}" = remote-control ]; then
+      for ((i = 2; i < ${#args[@]}; i++)); do
+        case "${args[i]}" in
+          --name)   form=serveur; name=${args[i+1]-}; break ;;
+          --name=*) form=serveur; name=${args[i]#--name=}; break ;;
+        esac
+      done
+    else
+      for ((i = 1; i < ${#args[@]}; i++)); do
+        case "${args[i]}" in
+          --remote-control)   form=interactive; name=${args[i+1]-}; break ;;
+          --remote-control=*) form=interactive; name=${args[i]#--remote-control=}; break ;;
+        esac
+      done
+    fi
+    [ -n "$form" ] && [ -n "$name" ] && [ "${name:0:1}" != "-" ] || continue
+    pid=${d##*/}
+    cwd=$(readlink -f -- "$d/cwd" 2>/dev/null) || cwd="?"
+    printf '%s\t%s\t%s\t%s\n' "$pid" "$form" "$cwd" "$name"
+  done
+}
+
+# Noms portés par PLUSIEURS processus : « nom<TAB>pid<TAB>forme<TAB>dossier », regroupés par nom.
+rc_duplicate_names() {
+  rc_named_sessions | awk -F'\t' '
+    { n[$4]++; row[NR] = $4 "\t" $1 "\t" $2 "\t" $3; nm[NR] = $4 }
+    END { for (i = 1; i <= NR; i++) if (n[nm[i]] > 1) print row[i] }' | sort -t$'\t' -k1,1 -k2,2n
+}
+
+# Processus qui portent le nom de CETTE instance (RC_NAME) sans être l'un de ses propres serveurs (ceux du dossier
+# RC_DIR) : « pid<TAB>forme<TAB>dossier ». Lancer un serveur de plus créerait un doublon.
+rc_name_conflicts() {
+  local own pid form cwd name
+  own=" $(rc_server_pids | tr '\n' ' ') "
+  while IFS=$'\t' read -r pid form cwd name; do
+    [ "$name" = "$RC_NAME" ] || continue
+    case "$own" in *" $pid "*) continue ;; esac
+    printf '%s\t%s\t%s\n' "$pid" "$form" "$cwd"
+  done < <(rc_named_sessions)
 }
 
 # Mémoire réellement disponible (Mo), depuis /proc/meminfo ; vide si illisible.

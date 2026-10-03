@@ -177,6 +177,7 @@ Syntaxe shell, **aucun secret**. Voir [conf/session.env.example](conf/session.en
 | `RC_PERMISSION_MODE` | `acceptEdits` | `default`, `acceptEdits` ou `plan` (**`bypassPermissions`, `auto`, `dontAsk` sont refusés**) |
 | `RC_FALLBACK` | `never` | `never` : jamais de nouvelle session sans demande ; `norecord` : nouvelle session seulement sur « No recent session found » |
 | `RC_MIN_AVAILABLE_MB` | `1024` | ne rien lancer si `MemAvailable` est inférieure (code 8) |
+| `RC_ALLOW_SAME_NAME` | `0` | `1` lève le garde-fou des noms en double (code 9) : seulement si deux processus de même nom sont vraiment voulus |
 | `RC_MAX_LAUNCHES` / `RC_LAUNCH_WINDOW` | `3` / `600` | anti-boucle : au plus N lancements par fenêtre de M secondes, puis pause automatique |
 | `RC_LOG_MAX_BYTES` | `1048576` | rotation du journal : `<id>.log` devient `<id>.log.1` (une génération conservée) |
 | `RC_CONTINUE_FAIL_SECONDS` | `45` | un échec de `--continue` avant ce délai est analysé (message lu à l'écran) |
@@ -192,6 +193,7 @@ Syntaxe shell, **aucun secret**. Voir [conf/session.env.example](conf/session.en
 | 3 | connexion Claude invalide : rien n'est lancé (le service apparaît « failed ») |
 | 4 | pause anti-boucle (3 lancements en 10 minutes) ; **reprend seule** quand la fenêtre est écoulée |
 | 8 | mémoire disponible insuffisante (`RC_MIN_AVAILABLE_MB`) : rien n'est lancé |
+| 9 | un autre processus porte déjà le même nom de session (un jumeau, lancé autrement, par exemple `claude --remote-control <nom>` dans une fenêtre tmux) : rien n'est lancé |
 | 64-71 | configuration invalide : 64 identifiant, 65 mode de permission, 66 absente, 67 nom/dossier déjà pris, 68 nom invalide, 69 dossier relatif ou temporaire, 70 `RC_FALLBACK` invalide, 71 nombre invalide |
 
 `claude-rc-run` : le code de claude lui-même, ou **5** (session déjà servie par une autre instance), **6** (échec inconnu de
