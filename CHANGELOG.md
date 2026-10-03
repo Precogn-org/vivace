@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Duplicate sessions are now detected and refused.** Until now only the instances of this tool were checked against
+  each other; a Remote Control session started any other way (for example `claude --remote-control <name>` in a tmux
+  window, or a server started by hand in another folder) was invisible, so the same name could run twice, each with its
+  own conversation and its own memory. Now:
+  - `claude-rc-ctl list` reports every Remote Control process of the user that shares a name (both launch forms, pid,
+    folder); `claude-rc-ctl status <id>` shows the twin(s) of that instance;
+  - `claude-rc-ensure` does not launch a server when another process already carries the instance's name: exit **9**,
+    logged with the pids. `RC_ALLOW_SAME_NAME=1` in the instance file lifts the guard.
+  Names are read from NUL-separated arguments, so names with spaces or accents are handled.
+
 ## 2.2.0 — 2026-09-26
 
 Behaviour changes (please read):

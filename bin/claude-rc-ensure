@@ -10,6 +10,7 @@
 #   3  connexion Claude invalide -> rien n'est lancé (le service apparaît « failed » dans systemctl --user)
 #   4  trop de lancements récents : PAUSE (elle se lève seule quand la fenêtre est écoulée)
 #   8   mémoire disponible insuffisante (RC_MIN_AVAILABLE_MB) : rien n'est lancé (le service apparaît « failed »)
+#   9   un autre processus porte déjà le même nom (doublon) : rien n'est lancé (le service apparaît « failed »)
 #   64..71  configuration invalide (voir lib/common.sh)
 set -uo pipefail
 HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -40,6 +41,17 @@ if [ -n "${pids// /}" ]; then
   fi
   rc_note ERROR ALIVE_AUTH_KO "session en cours MAIS connexion Claude invalide : elle ne progressera plus. Refaire : claude auth login"
   exit 3
+fi
+
+# 2b. Un AUTRE processus porte-t-il déjà ce nom ? (session lancée dans tmux, par un script, à la main, dans un autre
+# dossier...) Lancer un serveur de plus créerait un doublon : deux conversations sous un même nom, mémoire doublée,
+# travail réparti entre les deux. On ne lance rien et on le dit. Choix volontaire : RC_ALLOW_SAME_NAME=1 dans <id>.env.
+if [ "${RC_ALLOW_SAME_NAME:-0}" != 1 ]; then
+  conflicts=$(rc_name_conflicts | awk -F'\t' '{printf "%spid %s (%s, %s)", (NR > 1 ? ", " : ""), $1, $2, $3}')
+  if [ -n "$conflicts" ]; then
+    rc_note ERROR DUPLICATE "un autre processus porte déjà le nom « $RC_NAME » : $conflicts. Je ne lance PAS de doublon. Arrête l'un des deux (claude-rc-ctl list les montre) ; RC_ALLOW_SAME_NAME=1 dans $RC_ID.env si c'est voulu."
+    exit 9
+  fi
 fi
 
 # 3. Réseau. Sans lui, on ne lance RIEN.

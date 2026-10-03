@@ -2,7 +2,8 @@
 # claude-rc-ctl : pilotage manuel des sessions Remote Control gérées par claude-rc-keepalive.
 #
 # Usage : claude-rc-ctl <commande> [<id>] [options]
-#   list                       toutes les sessions configurées : nom, dossier, minuteur, processus, mémoire
+#   list                       toutes les sessions configurées : nom, dossier, minuteur, processus, mémoire ;
+#                              signale aussi les DOUBLONS (même nom porté par plusieurs processus, quelle que soit leur origine)
 #   create <id> --name "Nom" --dir /chemin/absolu [--mode acceptEdits|default|plan] [--fallback never|norecord]
 #                              écrit ~/.config/claude-rc/<id>.env (600) après validation ; ne démarre RIEN
 #   enable <id>                active le minuteur (démarrage automatique) ; exige que la session ait déjà démarré une fois
@@ -38,6 +39,13 @@ do_list() {
     )
   done
   [ -n "$avail" ] && echo "mémoire disponible : ${avail} Mo"
+  dups=$(rc_duplicate_names)
+  if [ -n "$dups" ]; then
+    echo
+    echo "ATTENTION - DOUBLONS : plusieurs processus Remote Control portent le même nom (deux conversations, mémoire doublée) :"
+    printf '%s\n' "$dups" | awk -F'\t' '{ if ($1 != last) { printf "  « %s »\n", $1; last = $1 } printf "      pid %-8s %-12s %s\n", $2, $3, $4 }'
+    echo "  Garde UNE session par nom. Celle de claude-rc-keepalive s'arrête avec : claude-rc-ctl stop <id>"
+  fi
   return 0
 }
 
@@ -118,6 +126,11 @@ case "$cmd" in
       echo "processus serveur  : en cours (pid ${pids% })"
       echo "mémoire (serveur + enfants) : $(( $(rc_tree_rss_kb "${pids%% *}") / 1024 )) Mo"
     else echo "processus serveur  : aucun"; fi
+    conf=$(rc_name_conflicts)
+    if [ -n "$conf" ]; then
+      echo "DOUBLON            : un autre processus porte le nom « $RC_NAME » :"
+      printf '%s\n' "$conf" | awk -F'\t' '{ printf "                     pid %s (%s) dans %s\n", $1, $2, $3 }'
+    fi
     tmux has-session -t "$RC_TMUX_SESSION" 2>/dev/null && echo "session tmux       : $RC_TMUX_SESSION (existe)" || echo "session tmux       : $RC_TMUX_SESSION (absente)"
     rc_auth_ok && echo "connexion Claude   : OK" || echo "connexion Claude   : INVALIDE (refaire : claude auth login)"
     n=$(grep -Ec '^[0-9]+$' "$RC_LAUNCHES" 2>/dev/null || true)
