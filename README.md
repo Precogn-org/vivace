@@ -177,6 +177,7 @@ Shell syntax, **no secret**. See [conf/session.env.example](conf/session.env.exa
 | `RC_FALLBACK` | `never` | `never`: no new session, ever, unless you ask; `norecord`: new session only on "No recent session found" |
 | `RC_MIN_AVAILABLE_MB` | `1024` | do not launch when `MemAvailable` is lower (exit 8) |
 | `RC_ALLOW_SAME_NAME` | `0` | `1` lifts the duplicate-name guard (exit 9): only if two processes with the same name are really wanted |
+| `RC_AUTH_CACHE_SECONDS` | `300` | A successful `claude auth status` is remembered this long, in one file shared by all instances (fewer calls per minute). `0` disables. A failure is never remembered; `claude-rc-ctl status` always checks for real |
 | `RC_MAX_LAUNCHES` / `RC_LAUNCH_WINDOW` | `3` / `600` | anti-loop: at most N launches per M seconds, then an automatic pause |
 | `RC_LOG_MAX_BYTES` | `1048576` | journal rotation: `<id>.log` becomes `<id>.log.1` (one generation kept) |
 | `RC_CONTINUE_FAIL_SECONDS` | `45` | a `--continue` failure before this delay is analysed (message read from the screen) |

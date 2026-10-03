@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Fewer login checks.** A successful `claude auth status` is remembered for `RC_AUTH_CACHE_SECONDS` (default 300,
+  `0` disables) in one file shared by all instances, so N instances no longer make N calls per minute. A failure is
+  never remembered. Side effect: a login that drops is noticed after at most that delay instead of one minute.
 - **Duplicate sessions are now detected and refused.** Until now only the instances of this tool were checked against
   each other; a Remote Control session started any other way (for example `claude --remote-control <name>` in a tmux
   window, or a server started by hand in another folder) was invisible, so the same name could run twice, each with its

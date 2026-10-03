@@ -178,6 +178,7 @@ Syntaxe shell, **aucun secret**. Voir [conf/session.env.example](conf/session.en
 | `RC_FALLBACK` | `never` | `never` : jamais de nouvelle session sans demande ; `norecord` : nouvelle session seulement sur « No recent session found » |
 | `RC_MIN_AVAILABLE_MB` | `1024` | ne rien lancer si `MemAvailable` est inférieure (code 8) |
 | `RC_ALLOW_SAME_NAME` | `0` | `1` lève le garde-fou des noms en double (code 9) : seulement si deux processus de même nom sont vraiment voulus |
+| `RC_AUTH_CACHE_SECONDS` | `300` | Une vérification de connexion réussie est retenue ce nombre de secondes, dans un fichier commun à toutes les instances (moins d'appels par minute). `0` désactive. Un échec n'est jamais retenu ; `claude-rc-ctl status` vérifie toujours pour de vrai |
 | `RC_MAX_LAUNCHES` / `RC_LAUNCH_WINDOW` | `3` / `600` | anti-boucle : au plus N lancements par fenêtre de M secondes, puis pause automatique |
 | `RC_LOG_MAX_BYTES` | `1048576` | rotation du journal : `<id>.log` devient `<id>.log.1` (une génération conservée) |
 | `RC_CONTINUE_FAIL_SECONDS` | `45` | un échec de `--continue` avant ce délai est analysé (message lu à l'écran) |
