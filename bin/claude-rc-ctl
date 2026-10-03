@@ -132,7 +132,7 @@ case "$cmd" in
       printf '%s\n' "$conf" | awk -F'\t' '{ printf "                     pid %s (%s) dans %s\n", $1, $2, $3 }'
     fi
     tmux has-session -t "$RC_TMUX_SESSION" 2>/dev/null && echo "session tmux       : $RC_TMUX_SESSION (existe)" || echo "session tmux       : $RC_TMUX_SESSION (absente)"
-    rc_auth_ok && echo "connexion Claude   : OK" || echo "connexion Claude   : INVALIDE (refaire : claude auth login)"
+    RC_AUTH_FRESH=1 rc_auth_ok && echo "connexion Claude   : OK" || echo "connexion Claude   : INVALIDE (refaire : claude auth login)"
     n=$(grep -Ec '^[0-9]+$' "$RC_LAUNCHES" 2>/dev/null || true)
     echo "lancements récents : ${n:-0} (pause au-delà de $RC_MAX_LAUNCHES par ${RC_LAUNCH_WINDOW}s)"
     avail=$(rc_mem_available_mb); [ -n "$avail" ] && echo "mémoire disponible : ${avail} Mo (seuil de lancement : ${RC_MIN_AVAILABLE_MB} Mo)"

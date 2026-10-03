@@ -240,7 +240,31 @@ rc_tree_rss_kb() {
 rc_network_ok() { curl -sS -o /dev/null -m 8 --connect-timeout 5 https://api.anthropic.com/ >/dev/null 2>&1; }
 
 # Connexion Claude valide ? (claude auth status affiche du JSON avec "loggedIn": true)
-rc_auth_ok() { "$CLAUDE_BIN" auth status 2>/dev/null | grep -Eq '"loggedIn"[[:space:]]*:[[:space:]]*true'; }
+# Un résultat POSITIF est retenu RC_AUTH_CACHE_SECONDS (défaut 300 ; 0 = pas de cache) dans un fichier commun à toutes les
+# instances : N instances ne font plus N appels par minute. Un résultat négatif n'est jamais retenu (et efface le cache).
+# RC_AUTH_FRESH=1 force une vraie vérification (utilisé par « claude-rc-ctl status »).
+rc_auth_ok() {
+  local f="$CLAUDE_RC_STATE_DIR/auth-ok" ttl=${RC_AUTH_CACHE_SECONDS:-300} now ts=""
+  case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
+  now=$(rc_now)
+  # Mode « file » (défaut) : on LIT le fichier d'identifiants sans lancer claude. Lancer « claude auth status » peut
+  # déclencher un renouvellement du jeton, en concurrence avec celui des sessions : c'est ce qui a fait perdre la connexion.
+  if [ "${RC_AUTH_MODE:-file}" = file ] && [ "${RC_AUTH_FRESH:-0}" != 1 ]      && grep -Eqs '"refreshToken"[[:space:]]*:[[:space:]]*"[^"]+"' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json"; then
+    return 0
+  fi
+  if [ "$ttl" -gt 0 ] && [ "${RC_AUTH_FRESH:-0}" != 1 ] && [ -r "$f" ]; then
+    read -r ts < "$f" 2>/dev/null || ts=""
+    case "$ts" in ''|*[!0-9]*) ts="" ;; esac
+    if [ -n "$ts" ] && [ "$ts" -le "$now" ] && [ $((now - ts)) -lt "$ttl" ]; then return 0; fi
+  fi
+  if "$CLAUDE_BIN" auth status 2>/dev/null | grep -Eq '"loggedIn"[[:space:]]*:[[:space:]]*true'; then
+    if [ "$ttl" -gt 0 ]; then rc_mkstate; ( umask 077; printf '%s
+' "$now" > "$f.$$" && mv -f "$f.$$" "$f" ) 2>/dev/null || true; fi
+    return 0
+  fi
+  rm -f "$f" 2>/dev/null
+  return 1
+}
 
 # Verrou non bloquant par instance : empÃªche deux exÃ©cutions simultanÃ©es (minuteur + commande manuelle)
 # de lancer chacune une session. Sans `flock` (util-linux), pas de verrou.
