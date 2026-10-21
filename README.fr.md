@@ -1,5 +1,7 @@
 # claude-rc-keepalive
 
+Restez connecté à Claude Code en permanence, même en mobilité. Vivace relance vos sessions Remote Control après un arrêt ou un redémarrage, pour les retrouver depuis votre téléphone. Open source (MIT), prototype. Non affilié à Anthropic.
+
 > **Nom du produit : Vivace.** Ce dépôt (`claude-rc-keepalive`) est le moteur de **Vivace** — il garde les agents Claude Code allumés et pilotables « en remote live ».
 
 🇬🇧 [English](README.md) · 🇫🇷 Français
