@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# claude-rc-ctl : pilotage manuel des sessions Remote Control gérées par claude-rc-keepalive.
+# claude-rc-ctl: manual control of the Remote Control sessions managed by claude-rc-keepalive.
 #
-# Usage : claude-rc-ctl <commande> [<id>] [options]
-#   list                       toutes les sessions configurées : nom, dossier, minuteur, processus, mémoire ;
-#                              signale aussi les DOUBLONS (même nom porté par plusieurs processus, quelle que soit leur origine)
-#   create <id> --name "Nom" --dir /chemin/absolu [--mode acceptEdits|default|plan] [--fallback never|norecord]
-#                              écrit ~/.config/claude-rc/<id>.env (600) après validation ; ne démarre RIEN
-#   enable <id>                active le minuteur (démarrage automatique) ; exige que la session ait déjà démarré une fois
-#   disable <id>               désactive le minuteur ; la session en cours n'est PAS arrêtée
-#   status <id>                état complet (arrêt volontaire, processus, mémoire, tmux, connexion Claude, journal)
-#   stop <id>                  arrêt VOLONTAIRE : crée le drapeau, arrête la session ; le minuteur ne la relancera pas
-#   start <id>                 retire le drapeau, remet le compteur anti-boucle à zéro et lance (reprise par --continue)
-#   restart <id>               arrête le processus SANS drapeau, attend sa disparition, relance avec --continue
-#   fresh <id> --yes           crée une NOUVELLE session (sans --continue) : l'ancienne restera hors ligne dans claude.ai
-#   logs <id> [n]              les n dernières lignes du journal (défaut 50)
-#   screen <id>                l'écran actuel de la session tmux (lecture seule)
+# Usage: claude-rc-ctl <command> [<id>] [options]
+#   list                       all configured sessions: name, directory, timer, process, memory;
+#                              also reports DUPLICATES (same name used by several processes, whatever their origin)
+#   create <id> --name "Name" --dir /absolute/path [--mode acceptEdits|default|plan] [--fallback never|norecord]
+#                              writes ~/.config/claude-rc/<id>.env (600) after validation; starts NOTHING
+#   enable <id>                enables the timer (automatic start); requires the session to have started once already
+#   disable <id>               disables the timer; the running session is NOT stopped
+#   status <id>                full state (manual stop, process, memory, tmux, Claude login, journal)
+#   stop <id>                  MANUAL stop: creates the flag and stops the session; the timer will not restart it
+#   start <id>                 removes the flag, resets the anti-loop counter and launches (resume with --continue)
+#   restart <id>               stops the process WITHOUT a flag, waits for it to exit, relaunches with --continue
+#   fresh <id> --yes           creates a NEW session (no --continue): the old one stays offline in claude.ai
+#   logs <id> [n]              the last n lines of the journal (default 50)
+#   screen <id>                the current screen of the tmux session (read-only)
 set -uo pipefail
 HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # shellcheck disable=SC1091
@@ -22,29 +22,29 @@ HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
 usage() { sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 64; }
 
-# ---------- commandes qui ne chargent pas (ou pas encore) une configuration ----------
+# ---------- commands that do not load (or do not yet load) a configuration ----------
 do_list() {
   local f id avail
   avail=$(rc_mem_available_mb)
-  printf '%-16s %-38s %-9s %-10s %-7s %s\n' ID NOM MINUTEUR PROCESSUS MEM_MO DOSSIER
+  printf '%-16s %-38s %-9s %-10s %-7s %s\n' ID NAME TIMER PROCESS MEM_MB DIRECTORY
   for f in "$CLAUDE_RC_CONFIG_DIR"/*.env; do
     [ -e "$f" ] || continue
     id=$(basename "$f" .env)
     (
-      if ! rc_load_config "$id" 2>/dev/null; then printf '%-16s %s\n' "$id" "(configuration invalide : claude-rc-ctl status $id)"; exit 0; fi
-      timer=$(systemctl --user is-enabled "claude-rc@$id.timer" 2>/dev/null | head -1); timer=${timer:-inconnu}
+      if ! rc_load_config "$id" 2>/dev/null; then printf '%-16s %s\n' "$id" "(invalid configuration: claude-rc-ctl status $id)"; exit 0; fi
+      timer=$(systemctl --user is-enabled "claude-rc@$id.timer" 2>/dev/null | head -1); timer=${timer:-unknown}
       pids=$(rc_server_pids | tr '\n' ' ')
-      if [ -n "${pids// /}" ]; then proc="pid ${pids%% *}"; mem=$(( $(rc_tree_rss_kb "${pids%% *}") / 1024 )); else proc="aucun"; mem="-"; fi
+      if [ -n "${pids// /}" ]; then proc="pid ${pids%% *}"; mem=$(( $(rc_tree_rss_kb "${pids%% *}") / 1024 )); else proc="none"; mem="-"; fi
       printf '%-16s %-38.38s %-9s %-10s %-7s %s\n' "$id" "$RC_NAME" "$timer" "$proc" "$mem" "$RC_DIR"
     )
   done
-  [ -n "$avail" ] && echo "mémoire disponible : ${avail} Mo"
+  [ -n "$avail" ] && echo "available memory: ${avail} MB"
   dups=$(rc_duplicate_names)
   if [ -n "$dups" ]; then
     echo
-    echo "ATTENTION - DOUBLONS : plusieurs processus Remote Control portent le même nom (deux conversations, mémoire doublée) :"
-    printf '%s\n' "$dups" | awk -F'\t' '{ if ($1 != last) { printf "  « %s »\n", $1; last = $1 } printf "      pid %-8s %-12s %s\n", $2, $3, $4 }'
-    echo "  Garde UNE session par nom. Celle de claude-rc-keepalive s'arrête avec : claude-rc-ctl stop <id>"
+    echo "WARNING - DUPLICATES: several Remote Control processes use the same name (two conversations, doubled memory):"
+    printf '%s\n' "$dups" | awk -F'\t' '{ if ($1 != last) { printf "  \"%s\"\n", $1; last = $1 } printf "      pid %-8s %-12s %s\n", $2, $3, $4 }'
+    echo "  Keep ONE session per name. The one from claude-rc-keepalive is stopped with: claude-rc-ctl stop <id>"
   fi
   return 0
 }
@@ -58,18 +58,18 @@ do_create() {   # do_create <id> --name N --dir D [--mode M] [--fallback F]
       --dir)      dir=${2-}; shift 2 || usage ;;
       --mode)     mode=${2-}; shift 2 || usage ;;
       --fallback) fallback=${2-}; shift 2 || usage ;;
-      *) echo "option inconnue : $1" >&2; usage ;;
+      *) echo "unknown option: $1" >&2; usage ;;
     esac
   done
-  [ -n "$name" ] && [ -n "$dir" ] || { echo "create : --name et --dir sont obligatoires" >&2; exit 64; }
-  case "$id" in ''|*[!a-z0-9._-]*) echo "identifiant invalide : '$id' (minuscules, chiffres, . _ - seulement)" >&2; exit 64 ;; esac
+  [ -n "$name" ] && [ -n "$dir" ] || { echo "create: --name and --dir are required" >&2; exit 64; }
+  case "$id" in ''|*[!a-z0-9._-]*) echo "invalid identifier: '$id' (lowercase letters, digits, . _ - only)" >&2; exit 64 ;; esac
   f="$CLAUDE_RC_CONFIG_DIR/$id.env"
-  [ ! -e "$f" ] || { echo "$f existe déjà : je ne l'écrase pas" >&2; exit 64; }
+  [ ! -e "$f" ] || { echo "$f already exists: not overwriting it" >&2; exit 64; }
   ( umask 077; mkdir -p "$CLAUDE_RC_CONFIG_DIR" ) && chmod 700 "$CLAUDE_RC_CONFIG_DIR" 2>/dev/null || true
   (
     umask 077
     {
-      echo "# Créé par claude-rc-ctl create le $(date -u '+%Y-%m-%dT%H:%M:%SZ'). Syntaxe shell ; aucun secret ici."
+      echo "# Created by claude-rc-ctl create on $(date -u '+%Y-%m-%dT%H:%M:%SZ'). Shell syntax; no secret here."
       echo "RC_NAME=$(rc_squote "$name")"
       echo "RC_DIR=$(rc_squote "${dir%/}")"
       echo "RC_PERMISSION_MODE=$(rc_squote "$mode")"
@@ -77,14 +77,14 @@ do_create() {   # do_create <id> --name N --dir D [--mode M] [--fallback F]
     } > "$f"
   )
   ( rc_load_config "$id" ); rcx=$?
-  if [ "$rcx" -ne 0 ]; then rm -f "$f"; echo "création annulée (code $rcx) : $id.env non conservé" >&2; exit "$rcx"; fi
-  mkdir -p -- "$dir" || { rm -f "$f"; echo "impossible de créer $dir" >&2; exit 1; }
-  echo "créé : $f"
-  echo "  nom (claude.ai) : $name"
-  echo "  dossier         : $dir   (le dialogue « trust » de Claude Code doit avoir été accepté pour ce dossier)"
-  echo "Rien n'est démarré. Étapes suivantes :"
-  echo "  1. claude-rc-ctl fresh $id --yes     première session, demandée explicitement"
-  echo "  2. claude-rc-ctl enable $id          démarrage automatique (reprise par --continue)"
+  if [ "$rcx" -ne 0 ]; then rm -f "$f"; echo "creation cancelled (code $rcx): $id.env not kept" >&2; exit "$rcx"; fi
+  mkdir -p -- "$dir" || { rm -f "$f"; echo "cannot create $dir" >&2; exit 1; }
+  echo "created: $f"
+  echo "  name (claude.ai) : $name"
+  echo "  directory        : $dir   (the Claude Code \"trust\" dialog must have been accepted for this directory)"
+  echo "Nothing has been started. Next steps:"
+  echo "  1. claude-rc-ctl fresh $id --yes     first session, requested explicitly"
+  echo "  2. claude-rc-ctl enable $id          automatic start (resume with --continue)"
 }
 
 cmd=${1:-}; id=${2:-}
@@ -97,8 +97,8 @@ esac
 if [ "$cmd" = create ]; then shift 2; do_create "$id" "$@"; exit 0; fi
 rc_load_config "$id" || exit $?
 
-# Arrête le(s) serveur(s) avec SIGTERM et ATTEND leur disparition (max 20 s) : relancer trop tôt ferait échouer
-# --continue avec « already being served » (ou pire, laisserait deux serveurs).
+# Stops the server(s) with SIGTERM and WAITS for them to exit (max 20 s): relaunching too early would make
+# --continue fail with "already being served" (or, worse, leave two servers).
 stop_processes() {
   local pids i
   pids=$(rc_server_pids | tr '\n' ' ')
@@ -108,7 +108,7 @@ stop_processes() {
     [ -z "$(rc_server_pids)" ] && break
     sleep 1
   done
-  if [ -n "$(rc_server_pids)" ]; then echo "le serveur est toujours en cours après ${RC_STOP_WAIT} s (pid $(rc_server_pids | tr '\n' ' ')) : abandon" >&2; return 1; fi
+  if [ -n "$(rc_server_pids)" ]; then echo "the server is still running after ${RC_STOP_WAIT} s (pid $(rc_server_pids | tr '\n' ' ')): giving up" >&2; return 1; fi
   tmux kill-session -t "$RC_TMUX_SESSION" 2>/dev/null
   return 0
 }
@@ -116,81 +116,81 @@ stop_processes() {
 case "$cmd" in
   status)
     pids=$(rc_server_pids | tr '\n' ' ')
-    echo "identifiant        : $RC_ID"
-    echo "nom (claude.ai)    : $RC_NAME"
-    echo "dossier            : $RC_DIR"
-    echo "mode de permission : $RC_PERMISSION_MODE"
-    echo "repli (fallback)   : $RC_FALLBACK"
-    [ -e "$RC_STOP_FLAG" ] && echo "arrêt volontaire   : OUI (depuis $(cat "$RC_STOP_FLAG"))" || echo "arrêt volontaire   : non"
+    echo "identifier         : $RC_ID"
+    echo "name (claude.ai)   : $RC_NAME"
+    echo "directory          : $RC_DIR"
+    echo "permission mode    : $RC_PERMISSION_MODE"
+    echo "fallback           : $RC_FALLBACK"
+    [ -e "$RC_STOP_FLAG" ] && echo "manual stop        : YES (since $(cat "$RC_STOP_FLAG"))" || echo "manual stop        : no"
     if [ -n "${pids// /}" ]; then
-      echo "processus serveur  : en cours (pid ${pids% })"
-      echo "mémoire (serveur + enfants) : $(( $(rc_tree_rss_kb "${pids%% *}") / 1024 )) Mo"
-    else echo "processus serveur  : aucun"; fi
+      echo "server process     : running (pid ${pids% })"
+      echo "memory (server + children): $(( $(rc_tree_rss_kb "${pids%% *}") / 1024 )) MB"
+    else echo "server process     : none"; fi
     conf=$(rc_name_conflicts)
     if [ -n "$conf" ]; then
-      echo "DOUBLON            : un autre processus porte le nom « $RC_NAME » :"
-      printf '%s\n' "$conf" | awk -F'\t' '{ printf "                     pid %s (%s) dans %s\n", $1, $2, $3 }'
+      echo "DUPLICATE          : another process uses the name '$RC_NAME':"
+      printf '%s\n' "$conf" | awk -F'\t' '{ printf "                     pid %s (%s) in %s\n", $1, $2, $3 }'
     fi
-    tmux has-session -t "$RC_TMUX_SESSION" 2>/dev/null && echo "session tmux       : $RC_TMUX_SESSION (existe)" || echo "session tmux       : $RC_TMUX_SESSION (absente)"
-    RC_AUTH_FRESH=1 rc_auth_ok && echo "connexion Claude   : OK" || echo "connexion Claude   : INVALIDE (refaire : claude auth login)"
+    tmux has-session -t "$RC_TMUX_SESSION" 2>/dev/null && echo "tmux session       : $RC_TMUX_SESSION (exists)" || echo "tmux session       : $RC_TMUX_SESSION (absent)"
+    RC_AUTH_FRESH=1 rc_auth_ok && echo "Claude login       : OK" || echo "Claude login       : INVALID (redo: claude auth login)"
     n=$(grep -Ec '^[0-9]+$' "$RC_LAUNCHES" 2>/dev/null || true)
-    echo "lancements récents : ${n:-0} (pause au-delà de $RC_MAX_LAUNCHES par ${RC_LAUNCH_WINDOW}s)"
-    avail=$(rc_mem_available_mb); [ -n "$avail" ] && echo "mémoire disponible : ${avail} Mo (seuil de lancement : ${RC_MIN_AVAILABLE_MB} Mo)"
-    echo "--- journal (8 dernières lignes)"
-    tail -n 8 "$CLAUDE_RC_STATE_DIR/$RC_ID.log" 2>/dev/null || echo "(journal vide)"
+    echo "recent launches    : ${n:-0} (pause above $RC_MAX_LAUNCHES per ${RC_LAUNCH_WINDOW}s)"
+    avail=$(rc_mem_available_mb); [ -n "$avail" ] && echo "available memory   : ${avail} MB (launch threshold: ${RC_MIN_AVAILABLE_MB} MB)"
+    echo "--- journal (last 8 lines)"
+    tail -n 8 "$CLAUDE_RC_STATE_DIR/$RC_ID.log" 2>/dev/null || echo "(journal empty)"
     ;;
   enable)
     if [ ! -e "$RC_STARTED" ]; then
-      echo "'$RC_ID' n'a encore jamais démarré : créez d'abord la première session explicitement :" >&2
+      echo "'$RC_ID' has never started yet: create the first session explicitly first:" >&2
       echo "  claude-rc-ctl fresh $RC_ID --yes" >&2
       exit 64
     fi
     systemctl --user enable --now "claude-rc@$RC_ID.timer" || exit 1
-    rc_log INFO "minuteur activé (claude-rc-ctl enable)"
-    echo "minuteur activé pour '$RC_ID' : vérification toutes les minutes, et au démarrage de la machine"
+    rc_log INFO "timer enabled (claude-rc-ctl enable)"
+    echo "timer enabled for '$RC_ID': checks every minute, and at machine boot"
     ;;
   disable)
     systemctl --user disable --now "claude-rc@$RC_ID.timer" || exit 1
-    rc_log INFO "minuteur désactivé (claude-rc-ctl disable)"
-    echo "minuteur désactivé pour '$RC_ID' ; la session en cours n'est PAS arrêtée (claude-rc-ctl stop $RC_ID pour l'arrêter)"
+    rc_log INFO "timer disabled (claude-rc-ctl disable)"
+    echo "timer disabled for '$RC_ID'; the running session is NOT stopped (claude-rc-ctl stop $RC_ID to stop it)"
     ;;
   stop)
     rc_mkstate
     rc_write "$RC_STOP_FLAG" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    rc_log INFO "arrêt volontaire demandé (claude-rc-ctl stop)"
+    rc_log INFO "manual stop requested (claude-rc-ctl stop)"
     stop_processes || exit 1
-    echo "arrêté. Le minuteur ne relancera pas '$RC_ID' tant que vous n'aurez pas fait : claude-rc-ctl start $RC_ID"
+    echo "stopped. The timer will not relaunch '$RC_ID' until you run: claude-rc-ctl start $RC_ID"
     ;;
   start)
     rm -f "$RC_STOP_FLAG" "$CLAUDE_RC_STATE_DIR/$RC_ID.last"
     ( umask 077; : > "$RC_LAUNCHES" ) 2>/dev/null || true
-    rc_log INFO "démarrage demandé (claude-rc-ctl start)"
+    rc_log INFO "start requested (claude-rc-ctl start)"
     exec "$HERE/claude-rc-ensure" "$RC_ID"
     ;;
   restart)
-    rc_log INFO "redémarrage demandé (claude-rc-ctl restart)"
+    rc_log INFO "restart requested (claude-rc-ctl restart)"
     stop_processes || exit 1
     rm -f "$CLAUDE_RC_STATE_DIR/$RC_ID.last"
-    ( umask 077; : > "$RC_LAUNCHES" ) 2>/dev/null || true   # décision humaine : l'anti-boucle repart de zéro
+    ( umask 077; : > "$RC_LAUNCHES" ) 2>/dev/null || true   # human decision: the anti-loop counter restarts from zero
     exec "$HERE/claude-rc-ensure" "$RC_ID"
     ;;
   fresh)
     if [ "${3:-}" != "--yes" ]; then
-      echo "Cette commande crée une NOUVELLE session claude.ai « $RC_NAME » : l'ancienne restera hors ligne dans claude.ai/code (à archiver)." >&2
-      echo "Confirmez avec : claude-rc-ctl fresh $RC_ID --yes" >&2
+      echo "This command creates a NEW claude.ai session \"$RC_NAME\": the old one will stay offline in claude.ai/code (to be archived)." >&2
+      echo "Confirm with: claude-rc-ctl fresh $RC_ID --yes" >&2
       exit 64
     fi
-    rc_log WARN "NOUVELLE session demandée (claude-rc-ctl fresh --yes)"
+    rc_log WARN "NEW session requested (claude-rc-ctl fresh --yes)"
     rm -f "$RC_STOP_FLAG" "$CLAUDE_RC_STATE_DIR/$RC_ID.last"
     stop_processes || exit 1
-    ( umask 077; : > "$RC_LAUNCHES" ) 2>/dev/null || true   # décision humaine : l'anti-boucle repart de zéro
+    ( umask 077; : > "$RC_LAUNCHES" ) 2>/dev/null || true   # human decision: the anti-loop counter restarts from zero
     RC_FORCE_FRESH=1 exec "$HERE/claude-rc-ensure" "$RC_ID"
     ;;
   logs)
-    tail -n "${3:-50}" "$CLAUDE_RC_STATE_DIR/$RC_ID.log" 2>/dev/null || echo "(journal vide)"
+    tail -n "${3:-50}" "$CLAUDE_RC_STATE_DIR/$RC_ID.log" 2>/dev/null || echo "(journal empty)"
     ;;
   screen)
-    tmux capture-pane -p -t "$RC_TMUX_SESSION" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -30 || echo "(pas de session tmux)"
+    tmux capture-pane -p -t "$RC_TMUX_SESSION" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -30 || echo "(no tmux session)"
     ;;
   *) usage ;;
 esac

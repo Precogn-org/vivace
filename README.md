@@ -66,6 +66,8 @@ process whose current directory (`/proc/<pid>/cwd`) is that folder is "its" serv
 - Linux with **systemd** (user manager), `tmux`, `curl`, `bash`, `pgrep`, `flock` (util-linux; without it there is no lock).
 - [Claude Code](https://code.claude.com/docs/en/quickstart) installed and **signed in** (`claude auth login`, claude.ai
   account: Pro, Max, Team or Enterprise; API keys do not work with Remote Control).
+- Remote Control needs a paid claude.ai subscription (Pro, Max, Team or Enterprise per Anthropic's documentation; API keys
+  are not supported). Vivace does not remove this requirement. It was tested on a Max subscription only.
 - `loginctl enable-linger <user>` (check with `loginctl show-user $USER -p Linger` → `Linger=yes`), otherwise the timer
   only starts at the first login.
 - Each working directory already **trusted** by Claude Code (the "trust" dialog: run `claude` there once).
@@ -239,7 +241,10 @@ Shell syntax, **no secret**. See [conf/session.env.example](conf/session.env.exa
 
 - No administrator rights, no open port: Remote Control only makes **outbound** connections.
 - No secret in this repository nor in the configuration files; the login is the one from `claude auth login`
-  (`~/.claude/.credentials.json`, mode 600): these scripts **never read that file** and only call `claude auth status`.
+  (`~/.claude/.credentials.json`, mode 600). By default (`RC_AUTH_MODE=file`) the scripts read that Claude credentials
+  file locally, read-only, only to check that a refresh token is present, so the login can be checked without launching a
+  command. They never print, copy or send it. With `RC_AUTH_MODE=cli` they call `claude auth status` instead
+  (`claude-rc-ctl status` always does, via `RC_AUTH_FRESH=1`).
 - Allowed permission modes: `default`, `acceptEdits`, `plan`. **`bypassPermissions`, `auto` and `dontAsk` are refused** by the
   script. A remotely driven session can run commands on the machine with the rights of the account: choose the working
   directory, the additional directories and the account accordingly.
@@ -271,7 +276,10 @@ the permission and lock tests are skipped.
 
 **Before publishing a fork or a contribution:** `bash tests/hygiene.sh` scans for keys, IPv4 addresses, e-mail addresses and
 long random strings. To add your own terms that must never be published (names, projects, hosts), create
-`tests/private-patterns.local` (one pattern per line). That file is in `.gitignore` and must **never** be committed.
+`tests/private-patterns.local` (one pattern per line, `grep -E` format) and/or a central file shared by all your projects,
+`~/.config/precogn/private-patterns` (or the path in `VIVACE_PRIVATE_PATTERNS`). Both are read if they exist. The repository
+file is in `.gitignore` and must **never** be committed. For these personal terms the scan prints only `file:line` of each
+hit, never the matching text, so the report itself does not reveal the term.
 
 ## License
 

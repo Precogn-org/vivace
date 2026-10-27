@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# claude-rc-ensure : s'assure qu'une session Remote Control tourne. Idempotent : appelé chaque minute par le minuteur.
+# claude-rc-ensure: makes sure a Remote Control session is running. Idempotent: called every minute by the timer.
 #
-# Usage : claude-rc-ensure <id>        (variable optionnelle : RC_FORCE_FRESH=1 -> nouvelle session, sans --continue)
+# Usage: claude-rc-ensure <id>        (optional variable: RC_FORCE_FRESH=1 -> new session, without --continue)
 #
-# Codes de sortie :
-#   0  tout va bien (session en cours, lancée à l'instant, arrêt volontaire, réseau momentanément absent,
-#      ou une autre exécution est déjà en train de vérifier)
-#   1  tmux n'a pas pu démarrer / dossier de travail impossible à créer
-#   3  connexion Claude invalide -> rien n'est lancé (le service apparaît « failed » dans systemctl --user)
-#   4  trop de lancements récents : PAUSE (elle se lève seule quand la fenêtre est écoulée)
-#   8   mémoire disponible insuffisante (RC_MIN_AVAILABLE_MB) : rien n'est lancé (le service apparaît « failed »)
-#   9   un autre processus porte déjà le même nom (doublon) : rien n'est lancé (le service apparaît « failed »)
-#   64..71  configuration invalide (voir lib/common.sh)
+# Exit codes:
+#   0  all is well (session running, just launched, manual stop, network temporarily down,
+#      or another run is already checking)
+#   1  tmux could not start / working directory cannot be created
+#   3  invalid Claude login -> nothing is launched (the service shows as "failed" in systemctl --user)
+#   4  too many recent launches: PAUSE (it lifts by itself when the window has elapsed)
+#   8  available memory too low (RC_MIN_AVAILABLE_MB): nothing is launched (the service shows as "failed")
+#   9  another process already uses the same name (duplicate): nothing is launched (the service shows as "failed")
+#   64..71  invalid configuration (see lib/common.sh)
 set -uo pipefail
 HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # shellcheck disable=SC1091
@@ -19,81 +19,81 @@ HERE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 
 rc_load_config "${1:-}" || exit $?
 
-# 0. Une seule exécution à la fois par instance (le minuteur et une commande manuelle peuvent se croiser).
+# 0. One run at a time per instance (the timer and a manual command can overlap).
 if ! rc_lock; then
-  rc_note INFO LOCKED "une autre vérification est en cours pour '$RC_ID' : je la laisse faire"
+  rc_note INFO LOCKED "another check is in progress for '$RC_ID': leaving it to finish"
   exit 0
 fi
 
-# 1. Arrêt volontaire demandé ? (claude-rc-ctl stop <id>)
+# 1. Manual stop requested? (claude-rc-ctl stop <id>)
 if [ -e "$RC_STOP_FLAG" ]; then
-  rc_note INFO STOPPED "arrêt volontaire actif ($RC_STOP_FLAG) : je ne relance pas. Pour reprendre : claude-rc-ctl start $RC_ID"
+  rc_note INFO STOPPED "manual stop active ($RC_STOP_FLAG): not relaunching. To resume: claude-rc-ctl start $RC_ID"
   exit 0
 fi
 
-# 2. Déjà en cours ? (y compris une session lancée à la main : elle est adoptée, jamais doublée)
+# 2. Already running? (including a session started by hand: it is adopted, never doubled)
 pids=$(rc_server_pids | tr '\n' ' ')
 if [ -n "${pids// /}" ]; then
   if rc_auth_ok; then
     rc_mark_started
-    rc_note INFO ALIVE "session « $RC_NAME » en cours (pid ${pids%% *})"
+    rc_note INFO ALIVE "session '$RC_NAME' is running (pid ${pids%% *})"
     exit 0
   fi
-  rc_note ERROR ALIVE_AUTH_KO "session en cours MAIS connexion Claude invalide : elle ne progressera plus. Refaire : claude auth login"
+  rc_note ERROR ALIVE_AUTH_KO "session is running BUT the Claude login is invalid: it will make no more progress. Redo: claude auth login"
   exit 3
 fi
 
-# 2b. Un AUTRE processus porte-t-il déjà ce nom ? (session lancée dans tmux, par un script, à la main, dans un autre
-# dossier...) Lancer un serveur de plus créerait un doublon : deux conversations sous un même nom, mémoire doublée,
-# travail réparti entre les deux. On ne lance rien et on le dit. Choix volontaire : RC_ALLOW_SAME_NAME=1 dans <id>.env.
+# 2b. Does ANOTHER process already use this name? (session started in tmux, by a script, by hand, in another
+# directory...) Launching one more server would create a duplicate: two conversations under one name, doubled memory,
+# work split between the two. Nothing is launched and the reason is logged. Deliberate choice: RC_ALLOW_SAME_NAME=1 in <id>.env.
 if [ "${RC_ALLOW_SAME_NAME:-0}" != 1 ]; then
   conflicts=$(rc_name_conflicts | awk -F'\t' '{printf "%spid %s (%s, %s)", (NR > 1 ? ", " : ""), $1, $2, $3}')
   if [ -n "$conflicts" ]; then
-    rc_note ERROR DUPLICATE "un autre processus porte déjà le nom « $RC_NAME » : $conflicts. Je ne lance PAS de doublon. Arrête l'un des deux (claude-rc-ctl list les montre) ; RC_ALLOW_SAME_NAME=1 dans $RC_ID.env si c'est voulu."
+    rc_note ERROR DUPLICATE "another process already uses the name '$RC_NAME': $conflicts. NOT launching a duplicate. Stop one of the two (claude-rc-ctl list shows them); RC_ALLOW_SAME_NAME=1 in $RC_ID.env if this is intended."
     exit 9
   fi
 fi
 
-# 3. Réseau. Sans lui, on ne lance RIEN.
+# 3. Network. Without it, NOTHING is launched.
 if ! rc_network_ok; then
-  rc_note WARN NET_KO "API Anthropic injoignable : pas de lancement, nouvel essai dans 1 minute"
+  rc_note WARN NET_KO "Anthropic API unreachable: not launching, trying again in 1 minute"
   exit 0
 fi
 
-# 4. Connexion Claude.
+# 4. Claude login.
 if ! rc_auth_ok; then
-  rc_note ERROR AUTH_KO "connexion Claude invalide (claude auth status) : rien n'est lancé. Refaire : claude auth login"
+  rc_note ERROR AUTH_KO "Claude login invalid (claude auth status): nothing is launched. Redo: claude auth login"
   exit 3
 fi
 
-# 5. Anti-boucle (pause, pas arrêt définitif).
+# 5. Anti-loop (a pause, not a permanent stop).
 if ! rc_launch_allowed; then
-  rc_note ERROR CRASHLOOP "$RC_MAX_LAUNCHES lancements en moins de ${RC_LAUNCH_WINDOW}s : pause, reprise automatique quand la fenêtre sera écoulée. Voir : claude-rc-ctl logs $RC_ID"
+  rc_note ERROR CRASHLOOP "$RC_MAX_LAUNCHES launches in less than ${RC_LAUNCH_WINDOW}s: pausing, resuming automatically when the window has elapsed. See: claude-rc-ctl logs $RC_ID"
   exit 4
 fi
 
-# 5b. Garde-fou mémoire : ne pas lancer un serveur de plus si la mémoire disponible est trop basse
-# (sans swap, le noyau tuerait alors d'autres processus). Ne compte pas comme un lancement.
+# 5b. Memory guard: do not launch one more server if available memory is too low
+# (without swap, the kernel would then kill other processes). Does not count as a launch.
 avail=$(rc_mem_available_mb)
 if [ -n "$avail" ] && [ "$avail" -lt "$RC_MIN_AVAILABLE_MB" ]; then
-  rc_note ERROR MEM_LOW "mémoire disponible ${avail} Mo < RC_MIN_AVAILABLE_MB=${RC_MIN_AVAILABLE_MB} Mo : rien n'est lancé (arrêter une autre session, ou baisser ce seuil dans $RC_ID.env)"
+  rc_note ERROR MEM_LOW "available memory ${avail} MB < RC_MIN_AVAILABLE_MB=${RC_MIN_AVAILABLE_MB} MB: nothing is launched (stop another session, or lower this threshold in $RC_ID.env)"
   exit 8
 fi
 
-# 6. Lancement dans tmux (claude a besoin d'un vrai terminal ; ne JAMAIS le passer dans un tube).
-mkdir -p "$RC_DIR" || { rc_log ERROR "impossible de créer $RC_DIR"; exit 1; }
-tmux has-session -t "$RC_TMUX_SESSION" 2>/dev/null && tmux kill-session -t "$RC_TMUX_SESSION" 2>/dev/null   # session tmux morte/orpheline
+# 6. Launch inside tmux (claude needs a real terminal; NEVER pipe it).
+mkdir -p "$RC_DIR" || { rc_log ERROR "cannot create $RC_DIR"; exit 1; }
+tmux has-session -t "$RC_TMUX_SESSION" 2>/dev/null && tmux kill-session -t "$RC_TMUX_SESSION" 2>/dev/null   # dead/orphaned tmux session
 fresh=""; [ "${RC_FORCE_FRESH:-0}" = 1 ] && fresh=" --fresh"
 cmd="$(printf '%q %q' "$HERE/claude-rc-run" "$RC_ID")$fresh"
-# 9>&- : le verrou ne doit pas être hérité par le serveur tmux (sinon il resterait verrouillé indéfiniment).
+# 9>&-: the lock must not be inherited by the tmux server (otherwise it would stay locked indefinitely).
 if tmux new-session -d -s "$RC_TMUX_SESSION" -c "$RC_DIR" "$cmd" 9>&-; then
   rc_record_launch
   if [ -n "$fresh" ]; then
-    rc_note INFO LAUNCHED "lancement dans tmux '$RC_TMUX_SESSION' (dossier $RC_DIR) : NOUVELLE session demandée"
+    rc_note INFO LAUNCHED "launched in tmux '$RC_TMUX_SESSION' (directory $RC_DIR): NEW session requested"
   else
-    rc_note INFO LAUNCHED "lancement dans tmux '$RC_TMUX_SESSION' (dossier $RC_DIR) : reprise par --continue"
+    rc_note INFO LAUNCHED "launched in tmux '$RC_TMUX_SESSION' (directory $RC_DIR): resuming with --continue"
   fi
   exit 0
 fi
-rc_log ERROR "tmux n'a pas pu démarrer la session '$RC_TMUX_SESSION'"
+rc_log ERROR "tmux could not start the session '$RC_TMUX_SESSION'"
 exit 1
