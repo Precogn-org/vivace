@@ -66,6 +66,8 @@ process whose current directory (`/proc/<pid>/cwd`) is that folder is "its" serv
 - Linux with **systemd** (user manager), `tmux`, `curl`, `bash`, `pgrep`, `flock` (util-linux; without it there is no lock).
 - [Claude Code](https://code.claude.com/docs/en/quickstart) installed and **signed in** (`claude auth login`, claude.ai
   account: Pro, Max, Team or Enterprise; API keys do not work with Remote Control).
+- Remote Control needs a paid claude.ai subscription (Pro, Max, Team or Enterprise per Anthropic's documentation; API keys
+  are not supported). Vivace does not remove this requirement. It was tested on a Max subscription only.
 - `loginctl enable-linger <user>` (check with `loginctl show-user $USER -p Linger` → `Linger=yes`), otherwise the timer
   only starts at the first login.
 - Each working directory already **trusted** by Claude Code (the "trust" dialog: run `claude` there once).

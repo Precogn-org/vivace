@@ -65,6 +65,9 @@ de session sont donc libres (espaces, accents, `/`, doubles espaces…).
 - Linux avec **systemd** (gestionnaire utilisateur), `tmux`, `curl`, `bash`, `pgrep`, `flock` (util-linux ; sans lui, pas de verrou).
 - [Claude Code](https://code.claude.com/docs/fr/quickstart) installé et **connecté** (`claude auth login`, compte claude.ai :
   Pro, Max, Team ou Enterprise ; les clés d'API ne fonctionnent pas avec Remote Control).
+- Remote Control exige un abonnement claude.ai payant (Pro, Max, Team ou Enterprise selon la documentation d'Anthropic ;
+  les clés d'API ne sont pas prises en charge). Vivace ne supprime pas cette exigence. Il n'a été testé que sur un
+  abonnement Max.
 - `loginctl enable-linger <utilisateur>` (vérifier avec `loginctl show-user $USER -p Linger` → `Linger=yes`), sinon le
   minuteur ne démarre qu'à la première connexion.
 - Chaque dossier de travail déjà **approuvé** par Claude Code (dialogue « trust » : lancer `claude` une fois dedans).
