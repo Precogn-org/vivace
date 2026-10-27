@@ -245,7 +245,11 @@ Syntaxe shell, **aucun secret**. Voir [conf/session.env.example](conf/session.en
 
 - Aucun droit administrateur, aucun port ouvert : Remote Control ne fait que des connexions **sortantes**.
 - Aucun secret dans ce dépôt ni dans les fichiers de configuration ; la connexion est celle de `claude auth login`
-  (`~/.claude/.credentials.json`, droits 600) : ces scripts **ne lisent jamais ce fichier** et n'appellent que `claude auth status`.
+  (`~/.claude/.credentials.json`, droits 600). Par défaut (`RC_AUTH_MODE=file`), les scripts lisent ce fichier
+  d'identifiants Claude en local, en lecture seule, uniquement pour vérifier qu'un jeton de renouvellement est présent :
+  la connexion se contrôle ainsi sans lancer de commande. Ils ne l'affichent, ne le copient et ne l'envoient jamais. Avec
+  `RC_AUTH_MODE=cli`, ils appellent `claude auth status` à la place (`claude-rc-ctl status` le fait toujours, via
+  `RC_AUTH_FRESH=1`).
 - Modes de permission autorisés : `default`, `acceptEdits`, `plan`. **`bypassPermissions`, `auto` et `dontAsk` sont refusés**
   par le script. Une session pilotée à distance peut exécuter des commandes sur la machine avec les droits du compte :
   choisir en conséquence le dossier de travail, les dossiers additionnels et le compte.
@@ -277,7 +281,10 @@ Windows (Git Bash), les tests de droits et de verrou sont ignorés.
 
 **Avant de publier un fork ou une contribution :** `bash tests/hygiene.sh` cherche clés, adresses IPv4, e-mails et longues
 chaînes aléatoires. Pour ajouter vos propres termes à ne jamais publier (noms, projets, hôtes), créer
-`tests/private-patterns.local` (un motif par ligne). Ce fichier est dans `.gitignore` et ne doit **jamais** être versionné.
+`tests/private-patterns.local` (un motif par ligne, format `grep -E`) et/ou un fichier central partagé par tous vos projets,
+`~/.config/precogn/private-patterns` (ou le chemin donné par `VIVACE_PRIVATE_PATTERNS`). Les deux sont lus s'ils existent.
+Le fichier du dépôt est dans `.gitignore` et ne doit **jamais** être versionné. Pour ces termes personnels, le balayage
+n'affiche que `fichier:ligne` de chaque occurrence, jamais le texte trouvé, afin que le rapport ne révèle pas le terme.
 
 ## Licence
 
