@@ -14,7 +14,7 @@ continuer à la piloter depuis un téléphone, une tablette ou claude.ai/code. U
 > minuteur, redémarrage, pause anti-boucle puis reprise automatique ; la reprise après redémarrage de la machine a été
 > vérifiée sur la version précédente (v2.1). Plusieurs points restent non vérifiés (fenêtre de reprise d'environ 4 h,
 > réseau tardif au démarrage…) : voir [docs/VERIFIED.fr.md](docs/VERIFIED.fr.md). Sans lien avec Anthropic, non approuvé par elle.
-> Note : les messages de journal et les commentaires du code sont pour l'instant en français ; la documentation est bilingue.
+> Note : les messages de journal et les commentaires du code sont en anglais ; la documentation est bilingue (anglais et français).
 > Changements : [CHANGELOG.md](CHANGELOG.md).
 
 ## Pourquoi

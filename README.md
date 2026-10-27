@@ -14,7 +14,7 @@ your phone, tablet or claude.ai/code. One instance = one session = one working d
 > anti-loop pause and automatic resume; the reboot resume was verified on the previous version (v2.1). Several points are
 > still unverified (the ~4-hour resume window, late network at boot…): see [docs/VERIFIED.md](docs/VERIFIED.md).
 > Not affiliated with, or endorsed by, Anthropic.
-> Note: the scripts' log messages and code comments are currently in French; the documentation is bilingual.
+> Note: the scripts' log messages and code comments are in English; the documentation is bilingual (English and French).
 > Changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Why
